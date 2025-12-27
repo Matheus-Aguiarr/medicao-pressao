@@ -348,254 +348,288 @@
     </div>
 
     <script>
-        // Inicializar data/hora atual
-        document.getElementById('datetime').value = new Date().toISOString().slice(0, 16);
-        document.getElementById('day-selector').value = new Date().toISOString().slice(0, 10);
-        document.getElementById('week-selector').value = new Date().toISOString().slice(0, 10);
+    function getLocalInputNow() {
+        const now = new Date();
+        return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
 
-        function addReading() {
-            const systolic = parseInt(document.getElementById('systolic').value);
-            const diastolic = parseInt(document.getElementById('diastolic').value);
-            const datetime = document.getElementById('datetime').value;
+    // Inicializar data/hora atual usando hora local
+    document.getElementById('datetime').value = getLocalInputNow();
+    document.getElementById('day-selector').value = getLocalInputNow().slice(0, 10);
+    document.getElementById('week-selector').value = getLocalInputNow().slice(0, 10);
 
-            if (!systolic || !diastolic || !datetime) {
-                alert('Por favor, preencha todos os campos!');
-                return;
-            }
+    function addReading() {
+        const systolic = parseInt(document.getElementById('systolic').value);
+        const diastolic = parseInt(document.getElementById('diastolic').value);
+        const datetime = document.getElementById('datetime').value;
 
-            if (systolic < 50 || systolic > 250 || diastolic < 30 || diastolic > 150) {
-                alert('Valores fora do intervalo esperado. Verifique os dados.');
-                return;
-            }
-
-            const reading = {
-                id: Date.now(),
-                systolic,
-                diastolic,
-                datetime: new Date(datetime).toISOString()
-            };
-
-            const readings = getReadings();
-            readings.push(reading);
-            localStorage.setItem('bloodPressureReadings', JSON.stringify(readings));
-
-            document.getElementById('systolic').value = '';
-            document.getElementById('diastolic').value = '';
-            document.getElementById('datetime').value = new Date().toISOString().slice(0, 16);
-
-            updateAllStats();
-            alert('Medição salva com sucesso!');
+        if (!systolic || !diastolic || !datetime) {
+            alert('Por favor, preencha todos os campos!');
+            return;
         }
 
-        function getReadings() {
-            const data = localStorage.getItem('bloodPressureReadings');
-            return data ? JSON.parse(data) : [];
+        if (systolic < 50 || systolic > 250 || diastolic < 30 || diastolic > 150) {
+            alert('Valores fora do intervalo esperado. Verifique os dados.');
+            return;
         }
 
-        function deleteReading(id) {
-            if (confirm('Deseja excluir esta medição?')) {
-                let readings = getReadings();
-                readings = readings.filter(r => r.id !== id);
-                localStorage.setItem('bloodPressureReadings', JSON.stringify(readings));
-                updateAllStats();
-            }
-        }
+        // Converter input local "YYYY-MM-DDTHH:mm" para timestamp (ms) — evita problemas de fuso
+        const ts = new Date(datetime).getTime();
 
-        function classifyPressure(systolic, diastolic) {
-            if (systolic < 120 && diastolic < 80) {
-                return { text: 'Normal', class: 'normal' };
-            } else if (systolic < 130 && diastolic < 80) {
-                return { text: 'Elevada', class: 'elevated' };
-            } else {
-                return { text: 'Alta', class: 'high' };
-            }
-        }
+        const reading = {
+            id: Date.now(),
+            systolic,
+            diastolic,
+            // novo formato: timestamp em ms; mantemos compatibilidade mais abaixo
+            timestamp: ts
+        };
 
-        function calculateAverage(readings) {
-            if (readings.length === 0) return null;
-            const avgSys = Math.round(readings.reduce((sum, r) => sum + r.systolic, 0) / readings.length);
-            const avgDia = Math.round(readings.reduce((sum, r) => sum + r.diastolic, 0) / readings.length);
-            return { systolic: avgSys, diastolic: avgDia };
-        }
+        const readings = getReadings();
+        readings.push(reading);
+        localStorage.setItem('bloodPressureReadings', JSON.stringify(readings));
 
-        function showTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.stats-section').forEach(s => s.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(`${tab}-stats`).classList.add('active');
-            
-            if (tab === 'day') updateDayStats();
-            if (tab === 'week') updateWeekStats();
-            if (tab === 'history') updateHistoryStats();
-        }
+        document.getElementById('systolic').value = '';
+        document.getElementById('diastolic').value = '';
+        document.getElementById('datetime').value = getLocalInputNow();
 
-        function updateDayStats() {
-            const selectedDate = document.getElementById('day-selector').value;
-            const readings = getReadings().filter(r => {
-                return r.datetime.startsWith(selectedDate);
-            }).sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-
-            const content = document.getElementById('day-content');
-            
-            if (readings.length === 0) {
-                content.innerHTML = `
-                    <div class="empty-state">
-                        <p>Nenhuma medição registrada neste dia</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const avg = calculateAverage(readings);
-            const classification = classifyPressure(avg.systolic, avg.diastolic);
-
-            content.innerHTML = `
-                <div class="stats-card">
-                    <h3>Média do Dia</h3>
-                    <div class="stat-item">
-                        <span class="stat-label">Pressão Arterial</span>
-                        <span class="stat-value">${avg.systolic}/${avg.diastolic} mmHg</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Classificação</span>
-                        <span class="classification ${classification.class}">${classification.text}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total de Medições</span>
-                        <span class="stat-value">${readings.length}</span>
-                    </div>
-                </div>
-                <div class="readings-list">
-                    ${readings.map(r => {
-                        const time = new Date(r.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                        const cls = classifyPressure(r.systolic, r.diastolic);
-                        return `
-                            <div class="reading-item">
-                                <div class="reading-info">
-                                    <div class="reading-time">${time}</div>
-                                    <div class="reading-values">${r.systolic}/${r.diastolic} mmHg</div>
-                                    <span class="classification ${cls.class}">${cls.text}</span>
-                                </div>
-                                <button class="delete-btn" onclick="deleteReading(${r.id})">Excluir</button>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-        }
-
-        function updateWeekStats() {
-            const selectedDate = new Date(document.getElementById('week-selector').value);
-            const weekStart = new Date(selectedDate);
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-            const weekEnd = new Date(weekStart);
-            weekEnd.setDate(weekEnd.getDate() + 6);
-
-            const readings = getReadings().filter(r => {
-                const date = new Date(r.datetime);
-                return date >= weekStart && date <= weekEnd;
-            }).sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-
-            const content = document.getElementById('week-content');
-            
-            if (readings.length === 0) {
-                content.innerHTML = `
-                    <div class="empty-state">
-                        <p>Nenhuma medição registrada nesta semana</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const avg = calculateAverage(readings);
-            const classification = classifyPressure(avg.systolic, avg.diastolic);
-
-            const periodText = `${weekStart.toLocaleDateString('pt-BR')} - ${weekEnd.toLocaleDateString('pt-BR')}`;
-
-            content.innerHTML = `
-                <div class="stats-card">
-                    <h3>Média da Semana</h3>
-                    <div class="stat-item">
-                        <span class="stat-label">Período</span>
-                        <span class="stat-value" style="font-size: 14px">${periodText}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Pressão Arterial</span>
-                        <span class="stat-value">${avg.systolic}/${avg.diastolic} mmHg</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Classificação</span>
-                        <span class="classification ${classification.class}">${classification.text}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total de Medições</span>
-                        <span class="stat-value">${readings.length}</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        function updateHistoryStats() {
-            const readings = getReadings().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-            const content = document.getElementById('history-content');
-            
-            if (readings.length === 0) {
-                content.innerHTML = `
-                    <div class="empty-state">
-                        <p>Nenhuma medição registrada ainda</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const avg = calculateAverage(readings);
-            const classification = classifyPressure(avg.systolic, avg.diastolic);
-
-            content.innerHTML = `
-                <div class="stats-card">
-                    <h3>Todas as Medições</h3>
-                    <div class="stat-item">
-                        <span class="stat-label">Média Geral</span>
-                        <span class="stat-value">${avg.systolic}/${avg.diastolic} mmHg</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Classificação</span>
-                        <span class="classification ${classification.class}">${classification.text}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total de Medições</span>
-                        <span class="stat-value">${readings.length}</span>
-                    </div>
-                </div>
-                <div class="readings-list">
-                    ${readings.map(r => {
-                        const date = new Date(r.datetime).toLocaleDateString('pt-BR');
-                        const time = new Date(r.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                        const cls = classifyPressure(r.systolic, r.diastolic);
-                        return `
-                            <div class="reading-item">
-                                <div class="reading-info">
-                                    <div class="reading-time">${date} às ${time}</div>
-                                    <div class="reading-values">${r.systolic}/${r.diastolic} mmHg</div>
-                                    <span class="classification ${cls.class}">${cls.text}</span>
-                                </div>
-                                <button class="delete-btn" onclick="deleteReading(${r.id})">Excluir</button>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-        }
-
-        function updateAllStats() {
-            updateDayStats();
-            updateWeekStats();
-            updateHistoryStats();
-        }
-
-        // Carregar dados ao iniciar
         updateAllStats();
-    </script>
+        alert('Medição salva com sucesso!');
+    }
+
+    function getReadings() {
+        const data = localStorage.getItem('bloodPressureReadings');
+        return data ? JSON.parse(data) : [];
+    }
+
+    function deleteReading(id) {
+        if (confirm('Deseja excluir esta medição?')) {
+            let readings = getReadings();
+            readings = readings.filter(r => r.id !== id);
+            localStorage.setItem('bloodPressureReadings', JSON.stringify(readings));
+            updateAllStats();
+        }
+    }
+
+    function classifyPressure(systolic, diastolic) {
+        if (systolic < 120 && diastolic < 80) {
+            return { text: 'Normal', class: 'normal' };
+        } else if (systolic < 130 && diastolic < 80) {
+            return { text: 'Elevada', class: 'elevated' };
+        } else {
+            return { text: 'Alta', class: 'high' };
+        }
+    }
+
+    function calculateAverage(readings) {
+        if (readings.length === 0) return null;
+        const avgSys = Math.round(readings.reduce((sum, r) => sum + r.systolic, 0) / readings.length);
+        const avgDia = Math.round(readings.reduce((sum, r) => sum + r.diastolic, 0) / readings.length);
+        return { systolic: avgSys, diastolic: avgDia };
+    }
+
+    function showTab(tab) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.stats-section').forEach(s => s.classList.remove('active'));
+
+        // event pode vir do onclick inline; usar event.target se disponível
+        try { event.target.classList.add('active'); } catch (e) {}
+        document.getElementById(`${tab}-stats`).classList.add('active');
+
+        if (tab === 'day') updateDayStats();
+        if (tab === 'week') updateWeekStats();
+        if (tab === 'history') updateHistoryStats();
+    }
+
+    function updateDayStats() {
+        const selectedDate = document.getElementById('day-selector').value;
+        const readings = getReadings().filter(r => {
+            const ts = (r.timestamp !== undefined) ? r.timestamp : (r.datetime ? Date.parse(r.datetime) : NaN);
+            if (isNaN(ts)) return false;
+            const d = new Date(ts);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}` === selectedDate;
+        }).sort((a, b) => {
+            const ta = (a.timestamp !== undefined) ? a.timestamp : Date.parse(a.datetime);
+            const tb = (b.timestamp !== undefined) ? b.timestamp : Date.parse(b.datetime);
+            return tb - ta;
+        });
+
+        const content = document.getElementById('day-content');
+
+        if (readings.length === 0) {
+            content.innerHTML = `
+                <div class="empty-state">
+                    <p>Nenhuma medição registrada neste dia</p>
+                </div>
+            `;
+            return;
+        }
+
+        const avg = calculateAverage(readings);
+        const classification = classifyPressure(avg.systolic, avg.diastolic);
+
+        content.innerHTML = `
+            <div class="stats-card">
+                <h3>Média do Dia</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Pressão Arterial</span>
+                    <span class="stat-value">${avg.systolic}/${avg.diastolic} mmHg</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Classificação</span>
+                    <span class="classification ${classification.class}">${classification.text}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total de Medições</span>
+                    <span class="stat-value">${readings.length}</span>
+                </div>
+            </div>
+            <div class="readings-list">
+                ${readings.map(r => {
+                    const ts = (r.timestamp !== undefined) ? r.timestamp : Date.parse(r.datetime);
+                    const time = new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                    const cls = classifyPressure(r.systolic, r.diastolic);
+                    return `
+                        <div class="reading-item">
+                            <div class="reading-info">
+                                <div class="reading-time">${time}</div>
+                                <div class="reading-values">${r.systolic}/${r.diastolic} mmHg</div>
+                                <span class="classification ${cls.class}">${cls.text}</span>
+                            </div>
+                            <button class="delete-btn" onclick="deleteReading(${r.id})">Excluir</button>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    function updateWeekStats() {
+        const selectedDate = new Date(document.getElementById('week-selector').value);
+        const weekStart = new Date(selectedDate);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        weekStart.setHours(0,0,0,0);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        weekEnd.setHours(23,59,59,999);
+
+        const readings = getReadings().filter(r => {
+            const ts = (r.timestamp !== undefined) ? r.timestamp : Date.parse(r.datetime);
+            if (isNaN(ts)) return false;
+            const d = new Date(ts);
+            return d >= weekStart && d <= weekEnd;
+        }).sort((a, b) => {
+            const ta = (a.timestamp !== undefined) ? a.timestamp : Date.parse(a.datetime);
+            const tb = (b.timestamp !== undefined) ? b.timestamp : Date.parse(b.datetime);
+            return tb - ta;
+        });
+
+        const content = document.getElementById('week-content');
+
+        if (readings.length === 0) {
+            content.innerHTML = `
+                <div class="empty-state">
+                    <p>Nenhuma medição registrada nesta semana</p>
+                </div>
+            `;
+            return;
+        }
+
+        const avg = calculateAverage(readings);
+        const classification = classifyPressure(avg.systolic, avg.diastolic);
+
+        const periodText = `${weekStart.toLocaleDateString('pt-BR')} - ${weekEnd.toLocaleDateString('pt-BR')}`;
+
+        content.innerHTML = `
+            <div class="stats-card">
+                <h3>Média da Semana</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Período</span>
+                    <span class="stat-value" style="font-size: 14px">${periodText}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Pressão Arterial</span>
+                    <span class="stat-value">${avg.systolic}/${avg.diastolic} mmHg</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Classificação</span>
+                    <span class="classification ${classification.class}">${classification.text}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total de Medições</span>
+                    <span class="stat-value">${readings.length}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    function updateHistoryStats() {
+        const readings = getReadings().sort((a, b) => {
+            const ta = (a.timestamp !== undefined) ? a.timestamp : Date.parse(a.datetime);
+            const tb = (b.timestamp !== undefined) ? b.timestamp : Date.parse(b.datetime);
+            return tb - ta;
+        });
+        const content = document.getElementById('history-content');
+
+        if (readings.length === 0) {
+            content.innerHTML = `
+                <div class="empty-state">
+                    <p>Nenhuma medição registrada ainda</p>
+                </div>
+            `;
+            return;
+        }
+
+        const avg = calculateAverage(readings);
+        const classification = classifyPressure(avg.systolic, avg.diastolic);
+
+        content.innerHTML = `
+            <div class="stats-card">
+                <h3>Todas as Medições</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Média Geral</span>
+                    <span class="stat-value">${avg.systolic}/${avg.diastolic} mmHg</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Classificação</span>
+                    <span class="classification ${classification.class}">${classification.text}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total de Medições</span>
+                    <span class="stat-value">${readings.length}</span>
+                </div>
+            </div>
+            <div class="readings-list">
+                ${readings.map(r => {
+                    const ts = (r.timestamp !== undefined) ? r.timestamp : Date.parse(r.datetime);
+                    const date = new Date(ts).toLocaleDateString('pt-BR');
+                    const time = new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                    const cls = classifyPressure(r.systolic, r.diastolic);
+                    return `
+                        <div class="reading-item">
+                            <div class="reading-info">
+                                <div class="reading-time">${date} às ${time}</div>
+                                <div class="reading-values">${r.systolic}/${r.diastolic} mmHg</div>
+                                <span class="classification ${cls.class}">${cls.text}</span>
+                            </div>
+                            <button class="delete-btn" onclick="deleteReading(${r.id})">Excluir</button>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    function updateAllStats() {
+        updateDayStats();
+        updateWeekStats();
+        updateHistoryStats();
+    }
+
+    // Carregar dados ao iniciar
+    updateAllStats();
+</script>
 </body>
 </html>
